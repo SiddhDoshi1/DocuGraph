@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Similarity Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.2/dist/vis-network.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        .tab-content {
+            padding: 20px;
+            border-left: 1px solid #ddd;
+            border-right: 1px solid #ddd;
+            border-bottom: 1px solid #ddd;
+            border-radius: 0 0 5px 5px;
+        }
+        .graph-container {
+            height: 500px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .metric-card {
+            margin-bottom: 15px;
+        }
+        .progress {
+            height: 30px;
+        }
+        .centrality-card {
+            height: 400px;
+        }
+        #filePreview {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .loading-spinner {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        #pagerankChart {
+            min-height: 200px;  /* Prevents excessive shrinking */
+            width: 100%;
+        }
+        #coreChart {
+            min-height: 200px;  /* Prevents excessive shrinking */
+            width: 100%;
+        }
+        .domain-badge {
+            font-size: 0.9rem;
+            padding: 0.35em 0.65em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4">Document Similarity Analyzer</h1>
+
+        <ul class="nav nav-tabs" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload" type="button">Upload Documents</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="analyze-tab" data-bs-toggle="tab" data-bs-target="#analyze" type="button">Analyze Similarity</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="plagiarism-tab" data-bs-toggle="tab" data-bs-target="#plagiarism" type="button">Plagiarism Check</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="domain-tab" data-bs-toggle="tab" data-bs-target="#domain" type="button">Domain Classification</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+            <!-- Upload Tab -->
+            <div class="tab-pane fade show active" id="upload" role="tabpanel">
+                <div class="mb-3">
+                    <h3>Upload PDF Documents</h3>
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <input class="form-control" type="file" id="files" name="files" multiple accept=".pdf">
+                        <div id="filePreview" class="mt-2"></div>
+                        <button type="submit" class="btn btn-primary mt-3">Upload</button>
+                    </form>
+                </div>
+                <div id="uploadStatus"></div>
+                
+                <div class="mt-4" id="uploadGraphSection">
+                    <h4>Document Similarity Network</h4>
+                    <div class="graph-container position-relative">
+                        <div id="graphContainer" style="width: 100%; height: 100%;"></div>
+                        <div id="graphLoading" class="loading-spinner">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="graphError" class="alert alert-danger mt-3" style="display: none;"></div>
+                </div>
+                
+                <div class="mt-4">
+                    <h4>Uploaded Documents</h4>
+                    <table class="table table-striped" id="documentsTable">
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Upload Date</th>
+                                <th>Processed</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Analyze Tab -->
+            <div class="tab-pane fade" id="analyze" role="tabpanel">
+                <div class="mb-3">
+                    <h3>Document Similarity Network</h3>
+                    <div class="graph-container position-relative">
+                        <div id="analyzeGraphContainer" style="width: 100%; height: 100%;"></div>
+                        <div id="analyzeGraphLoading" class="loading-spinner">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="analyzeGraphError" class="alert alert-danger mt-3" style="display: none;"></div>
+                </div>
+            
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">Basic Graph Metrics</div>
+                            <div class="card-body" id="basicMetrics"></div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card centrality-card">
+                            <div class="card-header">Centrality Distribution</div>
+                            <div class="card-body">
+                                <canvas id="centralityChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">Top Documents by PageRank</div>
+                            <div class="card-body">
+                                <canvas id="pagerankChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">Core Number Distribution</div>
+                            <div class="card-body">
+                                <canvas id="coreChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <h3>Pairwise Document Similarity Analysis</h3>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="doc1Select" class="form-label">Select First Document</label>
+                            <select class="form-select" id="doc1Select">
+                                <option value="">-- Select Document --</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="doc2Select" class="form-label">Select Second Document</label>
+                            <select class="form-select" id="doc2Select">
+                                <option value="">-- Select Document --</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <button id="compareBtn" class="btn btn-primary">Compare Documents</button>
+                    </div>
+                </div>
+
+                <div id="pairwiseResults" class="mt-4" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">Similarity Results</div>
+                        <div class="card-body">
+                            <h5>Comparing: <span id="doc1Name"></span> and <span id="doc2Name"></span></h5>
+                            <div class="progress mt-3">
+                                <div id="similarityBar" class="progress-bar" role="progressbar" style="width: 0%">0%</div>
+                            </div>
+                            <p class="mt-2">Similarity Score: <span id="similarityScore">0</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Plagiarism Tab -->
+            <div class="tab-pane fade" id="plagiarism" role="tabpanel">
+                <div class="mb-3">
+                    <h3>Plagiarism Detection</h3>
+                    <form id="plagiarismForm" enctype="multipart/form-data">
+                        <input class="form-control" type="file" id="plagiarismFile" name="file" accept=".pdf">
+                        <button type="submit" class="btn btn-primary mt-3">Check for Plagiarism</button>
+                    </form>
+                </div>
+
+                <div id="plagiarismResults" class="mt-4">
+                    <div class="card">
+                        <div class="card-header">Plagiarism Check Results</div>
+                        <div class="card-body">
+                            <div id="plagiarismStatus" class="alert alert-info">
+                                Upload a document to check for plagiarism
+                            </div>
+                            <table class="table table-striped" id="similarityTable">
+                                <thead>
+                                    <tr>
+                                        <th>Document</th>
+                                        <th>Similarity Score</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Domain Classification Tab -->
+            <div class="tab-pane fade" id="domain" role="tabpanel">
+                <div class="mb-3">
+                    <h3>Document Domain Classification</h3>
+                    <button id="classifyBtn" class="btn btn-primary">Classify Documents</button>
+                </div>
+                
+                <div id="domainResults" class="mt-4">
+                    <div class="card">
+                        <div class="card-header">Domain Classification Results</div>
+                        <div class="card-body">
+                            <div id="domainStatus" class="alert alert-info">
+                                Click "Classify Documents" to analyze document domains
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <table class="table table-striped" id="domainTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Document</th>
+                                                <th>Domain</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <canvas id="domainChart" height="300"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
