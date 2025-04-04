@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "app.py",
+      "use": "@vercel/python",
+      "config": { 
+        "maxLambdaSize": "15mb"  // For BERT model and larger payloads
+      }
+    }
+  ],
+  "routes": [
+    // Explicit routes for API endpoints
+    { "src": "/upload", "dest": "app.py" },
+    { "src": "/documents", "dest": "app.py" },
+    { "src": "/delete_document/<doc_id>", "dest": "app.py" },
+    { "src": "/graph_metrics", "dest": "app.py" },
+    { "src": "/analyze_pair", "dest": "app.py" },
+    { "src": "/check_plagiarism", "dest": "app.py" },
+    { "src": "/train_gnn", "dest": "app.py" },
+    { "src": "/predict_domains", "dest": "app.py" },
+    { "src": "/classify_domains", "dest": "app.py" },
+    
+    // WebSocket/Socket.IO routes
+    {
+      "src": "/socket.io/(.*)",
+      "dest": "app.py",
+      "headers": {
+        "Connection": "Upgrade",
+        "Upgrade": "websocket"
+      }
+    },
+    
+    // Catch-all for other routes
+    { "src": "/(.*)", "dest": "app.py" }
+  ],
+  "env": {
+    "PYTHON_VERSION": "3.9",
+    "FLASK_ENV": "production",
+    "MONGO_URI": "@your-mongo-uri",
+    "ALLOWED_ORIGINS": "https://your-frontend.vercel.app"
+  }
+}
