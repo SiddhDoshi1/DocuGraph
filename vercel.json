@@ -4,33 +4,28 @@
     {
       "src": "app.py",
       "use": "@vercel/python",
-      "config": { 
-        "maxLambdaSize": "15mb"
+      "config": {
+        "maxLambdaSize": "15mb",
+        "suppressStream": true
       }
     }
   ],
   "routes": [
-    { "src": "/upload", "dest": "app.py" },
-    { "src": "/documents", "dest": "app.py" },
-    { "src": "/delete_document/<doc_id>", "dest": "app.py" },
-    { "src": "/graph_metrics", "dest": "app.py" },
-    { "src": "/analyze_pair", "dest": "app.py" },
-    { "src": "/check_plagiarism", "dest": "app.py" },
-    { "src": "/train_gnn", "dest": "app.py" },
-    { "src": "/predict_domains", "dest": "app.py" },
-    { "src": "/classify_domains", "dest": "app.py" },
+    { "src": "/upload", "methods": ["POST"], "dest": "app.py" },
+    { "src": "/documents", "methods": ["GET"], "dest": "app.py" },
+    { "src": "/delete_document/([^/]+)", "methods": ["DELETE"], "dest": "app.py" },
+    { "src": "/graph_metrics", "methods": ["GET"], "dest": "app.py" },
+    { "src": "/analyze_pair", "methods": ["GET"], "dest": "app.py" },
+    { "src": "/check_plagiarism", "methods": ["POST"], "dest": "app.py" },
+    { "src": "/train_gnn", "methods": ["POST"], "dest": "app.py" },
+    { "src": "/predict_domains", "methods": ["GET"], "dest": "app.py" },
+    { "src": "/classify_domains", "methods": ["GET"], "dest": "app.py" },
     
-    {
-      "src": "/socket.io/(.*)",
-      "dest": "app.py",
-      "headers": {
-        "Connection": "Upgrade",
-        "Upgrade": "websocket"
-      }
-    },
+    { "src": "/static/(.*)", "dest": "static/$1" },
     
-    // Catch-all for other routes
-    { "src": "/(.*)", "dest": "app.py" }
+    { "src": "/", "dest": "index.html" },
+    
+    { "src": "/api/(.*)", "dest": "app.py" }
   ],
   "env": {
     "PYTHON_VERSION": "3.9",
