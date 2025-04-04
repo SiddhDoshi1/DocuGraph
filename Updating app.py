@@ -580,13 +580,6 @@ def check_plagiarism():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
-
-@socketio.on('connect')
-def handle_connect():
-    app.logger.info('Client connected')
-    emit('connection_response', {'status': 'connected'})
-
 if __name__ == "__main__":
     socketio.run(app, debug=True)
 
