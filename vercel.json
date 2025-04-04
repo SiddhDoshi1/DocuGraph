@@ -5,12 +5,11 @@
       "src": "app.py",
       "use": "@vercel/python",
       "config": { 
-        "maxLambdaSize": "15mb"  // For BERT model and larger payloads
+        "maxLambdaSize": "15mb"
       }
     }
   ],
   "routes": [
-    // Explicit routes for API endpoints
     { "src": "/upload", "dest": "app.py" },
     { "src": "/documents", "dest": "app.py" },
     { "src": "/delete_document/<doc_id>", "dest": "app.py" },
@@ -21,7 +20,6 @@
     { "src": "/predict_domains", "dest": "app.py" },
     { "src": "/classify_domains", "dest": "app.py" },
     
-    // WebSocket/Socket.IO routes
     {
       "src": "/socket.io/(.*)",
       "dest": "app.py",
