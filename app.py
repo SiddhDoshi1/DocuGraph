@@ -2,12 +2,10 @@ import os
 import time
 import threading
 import json
+import uuid
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template
-from flask_socketio import SocketIO, emit
 from flask_cors import CORS 
-from pymongo import MongoClient
-from bson import ObjectId
 import numpy as np
 import networkx as nx
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -25,6 +23,7 @@ from sklearn.preprocessing import LabelEncoder
 import numpy as np
 from collections import defaultdict
 import re
+import joblib
 
 # Domain dictionary (can be expanded)
 DOMAIN_DICT = {
@@ -123,20 +122,13 @@ bert_model = BertModel.from_pretrained('bert-base-uncased')
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
 
-# MongoDB setup
-client = MongoClient('mongodb://localhost:27017/')
-db = client['GT_Assignment']
-documents_collection = db['documents']
-
-# Global lock for thread-safe operations
+# In-memory document storage
+documents_collection = {}
 graph_lock = threading.Lock()
 
 class JSONEncoder(json.JSONEncoder):
     def default(self, o):
-        if isinstance(o, ObjectId):
-            return str(o)
         if isinstance(o, (np.int_, np.intc, np.intp, np.int8, np.int16, 
                          np.int32, np.int64, np.uint8, np.uint16, 
                          np.uint32, np.uint64)):
@@ -158,7 +150,6 @@ def safe_float(value):
         return float(value)
     except (TypeError, ValueError):
         return None
-
 
 def get_domain_keywords():
     """Extract all keywords from domain dictionary"""
@@ -215,7 +206,7 @@ def create_gnn_data(graph_data):
     node_id_to_idx = {node['id']: idx for idx, node in enumerate(graph_data['nodes'])}
     
     for node in graph_data['nodes']:
-        doc = documents_collection.find_one({'_id': ObjectId(node['id'])})
+        doc = documents_collection.get(node['id'])
         if doc:
             # Use content-based domain detection
             domain = extract_domain_from_content(doc.get('text', ''))
@@ -342,11 +333,11 @@ def classify_domains():
         domain_counts = defaultdict(int)
         
         for i, node in enumerate(graph_data['nodes']):
-            doc = documents_collection.find_one({'_id': ObjectId(node['id'])})
+            doc = documents_collection.get(node['id'])
             if doc:
                 domain = domains[i]
                 results.append({
-                    'document_id': str(node['id']),
+                    'document_id': node['id'],
                     'document_name': doc['filename'],
                     'domain': domain,
                     'confidence': float(confidences[i])
@@ -368,20 +359,22 @@ def extract_text_from_pdf(file):
     return text
 
 def store_document(filename, text):
+    doc_id = str(uuid.uuid4())
     doc_data = {
         'filename': filename,
         'text': text,
-        'upload_date': datetime.now(),
+        'upload_date': datetime.now().isoformat(),
         'processed': True
     }
-    return documents_collection.insert_one(doc_data).inserted_id
+    documents_collection[doc_id] = doc_data
+    return doc_id
 
 def compute_similarity_graph():
-    documents = list(documents_collection.find({}, {"_id": 1, "text": 1, "filename": 1}))
+    documents = list(documents_collection.values())
     if len(documents) < 2:
         return {"nodes": [], "edges": []}
     
-    doc_ids = [str(doc["_id"]) for doc in documents]
+    doc_ids = list(documents_collection.keys())
     doc_texts = [doc["text"] for doc in documents]
     doc_names = [doc["filename"] for doc in documents]
 
@@ -390,7 +383,7 @@ def compute_similarity_graph():
     similarity_matrix = cosine_similarity(tfidf_matrix)
 
     G = nx.Graph()
-    for idx, (doc_id,doc_name) in enumerate(zip(doc_ids, doc_names)):
+    for idx, (doc_id, doc_name) in enumerate(zip(doc_ids, doc_names)):
         G.add_node(doc_id, label=doc_name)
     
     threshold = 0.3
@@ -466,16 +459,15 @@ def upload_files():
 
 @app.route('/documents', methods=['GET'])
 def get_documents():
-    docs = list(documents_collection.find({}, {'text': 0}))
-    for doc in docs:
-        doc['_id'] = str(doc['_id'])
+    docs = [{'id': k, 'filename': v['filename'], 'upload_date': v['upload_date']} 
+            for k, v in documents_collection.items()]
     return jsonify(docs)
 
 @app.route('/delete_document/<doc_id>', methods=['DELETE'])
 def delete_document(doc_id):
     try:
-        result = documents_collection.delete_one({'_id': ObjectId(doc_id)})
-        if result.deleted_count == 1:
+        if doc_id in documents_collection:
+            del documents_collection[doc_id]
             return jsonify({'message': 'Document deleted successfully'})
         return jsonify({'error': 'Document not found'}), 404
     except Exception as e:
@@ -495,8 +487,8 @@ def analyze_pair():
         return jsonify({'error': 'Please provide two document IDs'}), 400
     
     try:
-        doc_1 = documents_collection.find_one({'_id': ObjectId(doc_id_1)})
-        doc_2 = documents_collection.find_one({'_id': ObjectId(doc_id_2)})
+        doc_1 = documents_collection.get(doc_id_1)
+        doc_2 = documents_collection.get(doc_id_2)
         
         if not doc_1 or not doc_2:
             return jsonify({'error': 'One or both documents not found'}), 404
@@ -527,14 +519,14 @@ def check_plagiarism():
         query_text = extract_text_from_pdf(file)
         
         # Get all documents from database
-        documents = list(documents_collection.find({}, {"_id": 1, "text": 1, "filename": 1}))
+        documents = list(documents_collection.values())
         
         if not documents:
             return jsonify({'error': 'No documents in database to compare with'}), 400
             
         # Prepare documents for comparison
         doc_texts = [doc['text'] for doc in documents]
-        doc_ids = [str(doc['_id']) for doc in documents]
+        doc_ids = list(documents_collection.keys())
         doc_names = [doc['filename'] for doc in documents]
         
         # Add query document to comparison set
@@ -581,6 +573,4 @@ def check_plagiarism():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
-    socketio.run(app, debug=True)
-
-
+    app.run(debug=True)

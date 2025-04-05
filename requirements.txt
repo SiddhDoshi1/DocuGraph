@@ -1,0 +1,11 @@
+flask
+flask-cors
+numpy
+networkx
+scikit-learn
+pypdf2
+python-louvain
+torch
+torch-geometric
+transformers
+joblib
