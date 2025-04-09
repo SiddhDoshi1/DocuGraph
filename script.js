@@ -61,6 +61,7 @@ function handleFileSelection(event) {
 async function loadDocuments() {
     try {
         const response = await fetch('http://127.0.0.1:5000/documents');
+        console.log(response);
         if (!response.ok) throw new Error('Network response was not ok');
 
         const docs = await response.json();
@@ -72,8 +73,8 @@ async function loadDocuments() {
             row.innerHTML = `
                 <td>${doc.filename}</td>
                 <td>${new Date(doc.upload_date).toLocaleString()}</td>
-                <td>Yes</td>
-                <td><button class="btn btn-sm btn-danger" onclick="deleteDocument('${doc.id}')">Delete</button></td>
+                <td>${doc.processed ? 'Yes' : 'No'}</td>
+                <td><button class="btn btn-sm btn-danger" onclick="deleteDocument('${doc._id}')">Delete</button></td>
             `;
             tbody.appendChild(row);
         });
@@ -86,11 +87,6 @@ async function loadDocuments() {
 // Delete document
 async function deleteDocument(docId) {
     if (!confirm('Are you sure you want to delete this document?')) return;
-
-    if (!docId || docId === 'undefined') {
-        showAlert('uploadStatus', 'Invalid document ID', 'danger');
-        return;
-    }
 
     try {
         const response = await fetch(`http://127.0.0.1:5000/delete_document/${docId}`, {
@@ -187,7 +183,7 @@ async function fetchGraphData() {
             }
 
             // Initialize WebSocket for real-time updates
-            // initWebSocket();
+            initWebSocket();
         } else {
             console.error("No valid graph data received");
             showAlert('analyzeGraphError', 'No graph data available', 'warning');
@@ -200,47 +196,47 @@ async function fetchGraphData() {
     }
 }
 
-// // Initialize WebSocket connection for real-time updates
-// function initWebSocket() {
-//     const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-//     const wsUrl = protocol + window.location.host + '/ws';
-//     const socket = new WebSocket(wsUrl);
+// Initialize WebSocket connection for real-time updates
+function initWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const wsUrl = protocol + window.location.host + '/ws';
+    const socket = new WebSocket(wsUrl);
 
-//     socket.onopen = function () {
-//         console.log('WebSocket connection established');
-//     };
+    socket.onopen = function () {
+        console.log('WebSocket connection established');
+    };
 
-//     socket.onmessage = function (event) {
-//         const update = JSON.parse(event.data);
-//         console.log('WebSocket update received:', update);
+    socket.onmessage = function (event) {
+        const update = JSON.parse(event.data);
+        console.log('WebSocket update received:', update);
 
-//         if (update.type === 'graph_update') {
-//             // Update current graph data
-//             if (update.data.nodes) {
-//                 currentGraphData.nodes = update.data.nodes;
-//             }
-//             if (update.data.edges) {
-//                 currentGraphData.edges = update.data.edges;
-//             }
-//             if (update.data.metrics) {
-//                 currentGraphData.metrics = update.data.metrics;
-//             }
+        if (update.type === 'graph_update') {
+            // Update current graph data
+            if (update.data.nodes) {
+                currentGraphData.nodes = update.data.nodes;
+            }
+            if (update.data.edges) {
+                currentGraphData.edges = update.data.edges;
+            }
+            if (update.data.metrics) {
+                currentGraphData.metrics = update.data.metrics;
+            }
 
-//             // Refresh visualizations
-//             visualizeGraph(currentGraphData, 'graphContainer');
-//             visualizeGraph(currentGraphData, 'analyzeGraphContainer');
-//             displayGraphMetrics(currentGraphData.metrics || currentGraphData);
-//         }
-//     };
+            // Refresh visualizations
+            visualizeGraph(currentGraphData, 'graphContainer');
+            visualizeGraph(currentGraphData, 'analyzeGraphContainer');
+            displayGraphMetrics(currentGraphData.metrics || currentGraphData);
+        }
+    };
 
-//     socket.onerror = function (error) {
-//         console.error('WebSocket error:', error);
-//     };
+    socket.onerror = function (error) {
+        console.error('WebSocket error:', error);
+    };
 
-//     socket.onclose = function () {
-//         console.log('WebSocket connection closed');
-//     };
-// }
+    socket.onclose = function () {
+        console.log('WebSocket connection closed');
+    };
+}
 
 function visualizeGraph(graphData, containerId) {
     const container = document.getElementById(containerId);
@@ -369,47 +365,6 @@ function visualizeGraph(graphData, containerId) {
             errorDiv.textContent = 'Error rendering graph visualization';
         }
     }
-}
-async function populateDocumentDropdowns() {
-    try {
-        const response = await fetch('http://127.0.0.1:5000/documents');
-        if (!response.ok) throw new Error('Network response was not ok');
-
-        const docs = await response.json();
-        const doc1Select = document.getElementById('doc1Select');
-        const doc2Select = document.getElementById('doc2Select');
-        const compareBtn = document.getElementById('compareBtn');
-
-        // Clear and disable controls
-        doc1Select.innerHTML = '<option value="" selected disabled>-- Select Document --</option>';
-        doc2Select.innerHTML = '<option value="" selected disabled>-- Select Document --</option>';
-        compareBtn.disabled = true;
-
-        // Populate dropdowns
-        docs.forEach(doc => {
-            const option1 = document.createElement('option');
-            option1.value = doc.id;
-            option1.textContent = doc.filename;
-            doc1Select.appendChild(option1);
-
-            const option2 = document.createElement('option');
-            option2.value = doc.id;
-            option2.textContent = doc.filename;
-            doc2Select.appendChild(option2);
-        });
-
-        // Add change listeners to enable compare button
-        doc1Select.addEventListener('change', updateCompareButton);
-        doc2Select.addEventListener('change', updateCompareButton);
-    } catch (error) {
-        console.error('Error loading documents:', error);
-    }
-}
-
-function updateCompareButton() {
-    const doc1Id = document.getElementById('doc1Select').value;
-    const doc2Id = document.getElementById('doc2Select').value;
-    document.getElementById('compareBtn').disabled = !(doc1Id && doc2Id);
 }
 
 // Display graph metrics with document-centric centrality
@@ -832,117 +787,89 @@ function displayPlagiarismResults(result) {
     });
 }
 
+// Populate document dropdowns
+async function populateDocumentDropdowns() {
+    try {
+        const response = await fetch('http://127.0.0.1:5000/documents');
+        if (!response.ok) throw new Error('Network response was not ok');
+
+        const docs = await response.json();
+        const doc1Select = document.getElementById('doc1Select');
+        const doc2Select = document.getElementById('doc2Select');
+
+        // Clear existing options except the first one
+        doc1Select.innerHTML = '<option value="">-- Select Document --</option>';
+        doc2Select.innerHTML = '<option value="">-- Select Document --</option>';
+
+        docs.forEach(doc => {
+            const option1 = document.createElement('option');
+            option1.value = doc._id;
+            option1.textContent = doc.filename;
+            doc1Select.appendChild(option1);
+
+            const option2 = document.createElement('option');
+            option2.value = doc._id;
+            option2.textContent = doc.filename;
+            doc2Select.appendChild(option2);
+        });
+    } catch (error) {
+        console.error('Error loading documents:', error);
+    }
+}
+
+// Handle document comparison
 async function compareDocuments() {
-    const doc1Select = document.getElementById('doc1Select');
-    const doc2Select = document.getElementById('doc2Select');
-    const doc1Id = doc1Select.value;
-    const doc2Id = doc2Select.value;
-    const resultsDiv = document.getElementById('pairwiseResults');
+    const doc1Id = document.getElementById('doc1Select').value;
+    const doc2Id = document.getElementById('doc2Select').value;
 
-    // Clear previous results
-    resultsDiv.style.display = 'none';
-    resultsDiv.innerHTML = '';
-
-    // Validate selections
     if (!doc1Id || !doc2Id) {
-        document.getElementById('pairwiseResults').style.display = 'block';
         showAlert('pairwiseResults', 'Please select both documents to compare', 'warning');
         return;
     }
 
     if (doc1Id === doc2Id) {
-        document.getElementById('pairwiseResults').style.display = 'block';
         showAlert('pairwiseResults', 'Please select two different documents', 'warning');
         return;
     }
 
     try {
-        // // Show loading state
-        // resultsDiv.innerHTML = '<div class="text-center my-3"><div class="spinner-border text-primary" role="status"></div></div>';
-        // resultsDiv.style.display = 'block';
-
         const response = await fetch(`http://127.0.0.1:5000/analyze_pair?doc_id_1=${doc1Id}&doc_id_2=${doc2Id}`);
-        
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to compare documents');
-        }
-
         const result = await response.json();
-        console.log(result);
-        displayPairwiseResults(result);
+
+        if (response.ok) {
+            displayPairwiseResults(result);
+        } else {
+            showAlert('pairwiseResults', result.error, 'danger');
+        }
     } catch (error) {
         showAlert('pairwiseResults', 'Error comparing documents: ' + error.message, 'danger');
     }
 }
 
+// Display pairwise comparison results
 function displayPairwiseResults(result) {
     const resultsDiv = document.getElementById('pairwiseResults');
-    if (!resultsDiv) {
-        console.error('Results container not found');
-        return;
-    }
+    const similarityScore = result.similarity_score;
+    const percentage = (similarityScore * 100).toFixed(2);
 
-    // Clear and prepare container
-    resultsDiv.innerHTML = '';
-    resultsDiv.style.display = 'block';
+    document.getElementById('doc1Name').textContent = result.doc1;
+    document.getElementById('doc2Name').textContent = result.doc2;
+    document.getElementById('similarityScore').textContent = similarityScore.toFixed(4);
 
-    // Create card structure
-    const card = document.createElement('div');
-    card.className = 'card shadow-sm mt-3 animate__animated animate__fadeIn';
-
-    const cardBody = document.createElement('div');
-    cardBody.className = 'card-body';
-
-    // Title
-    const title = document.createElement('h5');
-    title.className = 'card-title text-primary mb-4';
-    title.textContent = 'Document Comparison Results';
-
-    // Similarity score
-    const scoreText = document.createElement('div');
-    scoreText.className = 'mb-3';
-    scoreText.innerHTML = `
-        <h6 class="fw-bold">Similarity Score: 
-            <span class="text-decoration-underline">${result.similarity_score.toFixed(4)}</span>
-        </h6>
-    `;
-
-    // Progress bar
-    const progressContainer = document.createElement('div');
-    progressContainer.className = 'progress mb-3';
-    progressContainer.style.height = '28px';
-    
-    const progressBar = document.createElement('div');
-    progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated';
-    progressBar.style.width = `${(result.similarity_score * 100).toFixed(2)}%`;
-    progressBar.textContent = `${(result.similarity_score * 100).toFixed(2)}%`;
-    progressBar.setAttribute('aria-valuenow', (result.similarity_score * 100).toFixed(2));
-    progressBar.setAttribute('aria-valuemin', '0');
-    progressBar.setAttribute('aria-valuemax', '100');
+    const similarityBar = document.getElementById('similarityBar');
+    similarityBar.style.width = `${percentage}%`;
+    similarityBar.textContent = `${percentage}%`;
 
     // Set color based on similarity level
-    if (result.similarity_score > 0.7) {
-        progressBar.classList.add('bg-danger');
-    } else if (result.similarity_score > 0.3) {
-        progressBar.classList.add('bg-warning');
+    if (similarityScore > 0.7) {
+        similarityBar.className = 'progress-bar bg-danger';
+    } else if (similarityScore > 0.3) {
+        similarityBar.className = 'progress-bar bg-warning';
     } else {
-        progressBar.classList.add('bg-success');
+        similarityBar.className = 'progress-bar bg-success';
     }
 
-    // Assemble all components
-    progressContainer.appendChild(progressBar);
-    cardBody.appendChild(title);
-    cardBody.appendChild(scoreText);
-    cardBody.appendChild(progressContainer);
-    card.appendChild(cardBody);
-    resultsDiv.appendChild(card);
-
-    // Add animation when loaded
-    setTimeout(() => {
-        progressBar.classList.remove('progress-bar-animated');
-        progressBar.classList.remove('progress-bar-striped');
-    }, 1000);
+    resultsDiv.style.display = 'block';
 }
 
 // Helper functions
